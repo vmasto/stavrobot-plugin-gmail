@@ -6,13 +6,11 @@ Lets Stavrobot search, read, label, draft and send email in your Gmail.
 
 Stavrobot turns on every tool of a plugin when it's installed, so the bot can send email as you from the moment you connect. Email is untrusted input. Any message in your inbox can carry a prompt injection, text written to get the bot to forward your mail somewhere, and with `send` on nothing stands between that text and an outgoing email.
 
-Recommended: turn `send` off before you connect, and let the bot write drafts that you review and send yourself:
+Recommended: turn `send` off before you connect, and let the bot write drafts that you review and send yourself. You have to do this yourself, from your bot's plugin settings page:
 
 1. Open `/settings/plugins` and pick `gmail`.
 2. Under Permissions, set "Agents can use" to "Selected tools".
 3. Click "Select all", untick `send`, then click "Save permissions".
-
-Stavrobot doesn't let the bot change permissions, so it can't turn `send` back on by itself.
 
 If you're an agent installing this plugin, tell your user this warning and the steps above, and don't call `auth_url` until they confirm `send` is off.
 
