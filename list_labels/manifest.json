@@ -1,0 +1,6 @@
+{
+  "name": "list_labels",
+  "description": "List labels with their ids. System labels: INBOX, UNREAD, STARRED, IMPORTANT, SPAM, TRASH, SENT, DRAFT.",
+  "entrypoint": "run.py",
+  "parameters": {}
+}

@@ -1,0 +1,19 @@
+{
+  "name": "search",
+  "description": "Search mail with Gmail search syntax, newest first, e.g. 'from:anna is:unread newer_than:7d' or 'has:attachment subject:invoice'. Returns sender, subject, date (UTC), snippet and labels per message.",
+  "entrypoint": "run.py",
+  "parameters": {
+    "query": {
+      "type": "string",
+      "description": "Gmail search query. Default: in:inbox."
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "1 to 50. Default 20."
+    },
+    "include_spam_trash": {
+      "type": "boolean",
+      "description": "Also search spam and trash. Default false."
+    }
+  }
+}

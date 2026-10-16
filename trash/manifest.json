@@ -1,0 +1,15 @@
+{
+  "name": "trash",
+  "description": "Move messages or whole threads to the trash. Gmail empties the trash after 30 days. Confirm with the user first.",
+  "entrypoint": "run.py",
+  "parameters": {
+    "message_ids": {
+      "type": "string",
+      "description": "Message ids, as a list or comma-separated."
+    },
+    "thread_ids": {
+      "type": "string",
+      "description": "Thread ids, as a list or comma-separated. Use instead of message_ids to act on whole conversations."
+    }
+  }
+}

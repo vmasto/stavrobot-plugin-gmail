@@ -1,0 +1,35 @@
+{
+  "name": "create_draft",
+  "description": "Save a draft in Gmail for the user to review and send. Prefer this over send.",
+  "entrypoint": "run.py",
+  "parameters": {
+    "to": {
+      "type": "string",
+      "description": "Recipient address, or several comma-separated. Optional when replying: defaults to the sender."
+    },
+    "subject": {
+      "type": "string",
+      "description": "Subject. Optional when replying: defaults to Re: and the original subject."
+    },
+    "body": {
+      "type": "string",
+      "description": "Plain text body."
+    },
+    "cc": {
+      "type": "string",
+      "description": "Cc addresses, comma-separated."
+    },
+    "bcc": {
+      "type": "string",
+      "description": "Bcc addresses, comma-separated."
+    },
+    "reply_to_message_id": {
+      "type": "string",
+      "description": "Message id to reply to. Threads the reply in the same conversation."
+    },
+    "attachment": {
+      "type": "file",
+      "description": "A file to attach."
+    }
+  }
+}

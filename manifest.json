@@ -1,0 +1,20 @@
+{
+  "name": "gmail",
+  "description": "Search, read, label, draft and send email in the user's Gmail.",
+  "summary": "Search, read, organize and send Gmail",
+  "instructions": "1. In https://console.cloud.google.com create a project and enable the Gmail API.\n2. Under Google Auth Platform, set up the consent screen as External, then on Audience click Publish app. Apps left in Testing get tokens that expire after 7 days.\n3. Under Clients, create an OAuth client of type Desktop app and set client_id and client_secret from it.\n4. Ask Stavrobot to connect Gmail. It sends you a link. Google warns the app is unverified, click Advanced and continue. After you allow access the browser shows an error page on 127.0.0.1, that's expected: copy the full address and send it back.",
+  "config": {
+    "client_id": {
+      "description": "OAuth client ID of a Desktop app client, from Google Auth Platform > Clients in the Google Cloud console.",
+      "required": true
+    },
+    "client_secret": {
+      "description": "The same client's secret.",
+      "required": true
+    },
+    "refresh_token": {
+      "description": "Set by the auth_complete tool, no need to fill it in.",
+      "required": false
+    }
+  }
+}

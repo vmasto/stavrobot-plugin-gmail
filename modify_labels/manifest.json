@@ -1,0 +1,23 @@
+{
+  "name": "modify_labels",
+  "description": "Add or remove labels on messages or whole threads. Archive: remove INBOX. Mark read: remove UNREAD. Mark unread: add UNREAD. Star: add STARRED. Labels are names or ids.",
+  "entrypoint": "run.py",
+  "parameters": {
+    "message_ids": {
+      "type": "string",
+      "description": "Message ids, as a list or comma-separated."
+    },
+    "thread_ids": {
+      "type": "string",
+      "description": "Thread ids, as a list or comma-separated. Use instead of message_ids to act on whole conversations."
+    },
+    "add": {
+      "type": "string",
+      "description": "Labels to add, comma-separated."
+    },
+    "remove": {
+      "type": "string",
+      "description": "Labels to remove, comma-separated."
+    }
+  }
+}

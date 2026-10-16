@@ -1,0 +1,11 @@
+{
+  "name": "create_label",
+  "description": "Create a label. Use / in the name for nesting, e.g. Receipts/2026.",
+  "entrypoint": "run.py",
+  "parameters": {
+    "name": {
+      "type": "string",
+      "description": "Label name."
+    }
+  }
+}

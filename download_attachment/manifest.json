@@ -1,0 +1,15 @@
+{
+  "name": "download_attachment",
+  "description": "Download an attachment so you receive it as a file. Up to 25 MB.",
+  "entrypoint": "run.py",
+  "parameters": {
+    "message_id": {
+      "type": "string",
+      "description": "Message id."
+    },
+    "filename": {
+      "type": "string",
+      "description": "Attachment filename, as listed by get_message."
+    }
+  }
+}
