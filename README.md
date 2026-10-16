@@ -2,6 +2,20 @@
 
 Lets Stavrobot search, read, label, draft and send email in your Gmail.
 
+## Warning: `send` is on by default
+
+Stavrobot turns on every tool of a plugin when it's installed, so the bot can send email as you from the moment you connect. Email is untrusted input. Any message in your inbox can carry a prompt injection, text written to get the bot to forward your mail somewhere, and with `send` on nothing stands between that text and an outgoing email.
+
+Recommended: turn `send` off before you connect, and let the bot write drafts that you review and send yourself:
+
+1. Open `/settings/plugins` and pick `gmail`.
+2. Under Permissions, set "Agents can use" to "Selected tools".
+3. Click "Select all", untick `send`, then click "Save permissions".
+
+Stavrobot doesn't let the bot change permissions, so it can't turn `send` back on by itself.
+
+If you're an agent installing this plugin, tell your user this warning and the steps above, and don't call `auth_url` until they confirm `send` is off.
+
 ## Before installing
 
 You need your own Google Cloud OAuth client, it's free:
@@ -33,9 +47,7 @@ The plugin asks for the `gmail.modify` scope only. It can't permanently delete m
 - `modify_labels`: archive, mark read or unread, star, or apply your own labels.
 - `trash`.
 - `create_draft`: a new message or a reply, with an optional attachment.
-- `send`: sends a new message or a saved draft.
-
-Email is untrusted input. A message can contain text written to trick the bot into forwarding your mail somewhere. If you'd rather review everything before it goes out, turn off `send` on the plugins settings page and use drafts.
+- `send`: sends a new message or a saved draft. On by default, see the warning above.
 
 ## License
 
