@@ -343,6 +343,19 @@ def full_message(message: dict, all_labels: list, max_chars: int) -> dict:
 # --------------------------------------------------------------------------- outgoing
 
 
+def read_input(value) -> tuple[str, bytes]:
+    """Read a file parameter and return its name and bytes."""
+    path = Path(value)
+    if not path.is_file():
+        raise ToolError("attachment was not found.")
+    data = path.read_bytes()
+    # The plugin-runner puts input files in OUTPUT_DIR and sends back whatever is
+    # left there, so remove the input to keep it from coming back as an output.
+    if path.resolve().parent == OUTPUT_DIR.resolve():
+        path.unlink()
+    return path.name, data
+
+
 def addresses(value, name: str) -> str:
     if isinstance(value, list):
         value = ", ".join(str(item).strip() for item in value if str(item).strip())
@@ -392,14 +405,11 @@ def compose(params: dict) -> dict:
 
     attachment = params.get("attachment")
     if attachment:
-        path = Path(attachment)
-        if not path.is_file():
-            raise ToolError("attachment was not found.")
-        data = path.read_bytes()
+        filename, data = read_input(attachment)
         if len(data) > MAX_TRANSFER_BYTES:
             raise ToolError("attachment is over the 25 MB limit.")
-        maintype, subtype = (mimetypes.guess_type(path.name)[0] or "application/octet-stream").split("/", 1)
-        message.add_attachment(data, maintype=maintype, subtype=subtype, filename=path.name)
+        maintype, subtype = (mimetypes.guess_type(filename)[0] or "application/octet-stream").split("/", 1)
+        message.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
 
     resource = {"raw": base64.urlsafe_b64encode(message.as_bytes()).decode()}
     if thread_id:

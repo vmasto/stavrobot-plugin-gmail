@@ -253,10 +253,13 @@ def test_create_draft_reply_threads_and_attaches(fake, tmp_path):
     )
     fake.routes[("GET", "messages/m1")] = Response(200, original)
     fake.routes[("POST", "drafts")] = Response(200, {"id": "d1", "message": {"id": "m9", "threadId": "t1"}})
-    pdf = tmp_path / "menu.pdf"
+    # The plugin-runner puts input files in OUTPUT_DIR, so the tool must remove them.
+    gm.OUTPUT_DIR.mkdir()
+    pdf = gm.OUTPUT_DIR / "menu.pdf"
     pdf.write_bytes(b"%PDF")
     out = tool("create_draft")({"reply_to_message_id": "m1", "body": "Ναι, τα λέμε!", "attachment": str(pdf)})
     assert out == {"draft_id": "d1", "message_id": "m9", "thread_id": "t1"}
+    assert not pdf.exists()
 
     call = last(fake, "POST", "drafts")
     assert call["json"]["message"]["threadId"] == "t1"
