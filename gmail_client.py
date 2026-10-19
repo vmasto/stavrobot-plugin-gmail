@@ -3,6 +3,7 @@
 import base64
 import html
 import json
+import os
 import mimetypes
 import re
 import sys
@@ -19,7 +20,8 @@ import requests
 
 PLUGIN_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = PLUGIN_ROOT / "config.json"
-OUTPUT_DIR = Path("/tmp/gmail")
+# Stavrobot gives each run its own directory; older runners used /tmp/<plugin>.
+OUTPUT_DIR = Path(os.environ.get("STAVROBOT_TEMP_DIR", "/tmp/gmail"))
 
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -383,8 +385,8 @@ def read_input(value, name: str = "attachment") -> tuple[str, bytes]:
         raise ToolError(f"{name} must be a file path.")
     path = Path(value)
     if not path.is_file():
-        # The plugin-runner empties OUTPUT_DIR at the start of every run, so a call to this
-        # plugin that runs at the same time can delete the file before this run reads it.
+        # Runners older than Stavrobot 2cfc37e empty /tmp/gmail at the start of every run,
+        # so a parallel call to this plugin can delete the file before this run reads it.
         raise ToolError(
             f"{name} was not found at {value}. If another gmail tool ran at the same time, "
             "run this call again on its own."
@@ -426,7 +428,7 @@ def compose(params: dict) -> tuple[bytes, str | None]:
     body = params.get("body")
     if not isinstance(body, str) or not body.strip():
         raise ToolError("body is required.")
-    # Read the files before any network call: the plugin-runner can empty OUTPUT_DIR
+    # Read the files before any network call: older plugin-runners empty /tmp/gmail
     # when another run of this plugin starts.
     files = read_attachments(params)
     message = EmailMessage()
