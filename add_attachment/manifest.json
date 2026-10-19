@@ -1,0 +1,15 @@
+{
+  "name": "add_attachment",
+  "description": "Attach one more file to a saved draft, keeping its recipients, subject, body and thread. The draft gets a new message_id. For several files, pass a list of parameter objects in a single run_plugin_tool call so they run one after another: parallel calls on the same draft lose attachments.",
+  "entrypoint": "run.py",
+  "parameters": {
+    "draft_id": {
+      "type": "string",
+      "description": "The draft to add the file to, from create_draft."
+    },
+    "file": {
+      "type": "file",
+      "description": "The file to attach. All attachments on the draft must stay under 25 MB together."
+    }
+  }
+}

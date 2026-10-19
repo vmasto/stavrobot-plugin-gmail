@@ -14,11 +14,12 @@ import gmail_client as gm  # noqa: E402
 def main(params: dict) -> dict:
     draft_id = params.get("draft_id")
     if draft_id:
-        if any(params.get(key) for key in ("to", "subject", "body", "cc", "bcc", "attachment")):
+        if any(params.get(key) for key in ("to", "subject", "body", "cc", "bcc", *gm.ATTACHMENT_PARAMS)):
             raise gm.ToolError("Give either draft_id or a new message, not both.")
         sent = gm.api("POST", "drafts/send", body={"id": str(draft_id).strip()})
     else:
-        sent = gm.api("POST", "messages/send", body=gm.compose(params))
+        mime, thread_id = gm.compose(params)
+        sent = gm.upload_message("POST", "messages/send", {"threadId": thread_id} if thread_id else {}, mime)
     return {"sent": True, "message_id": sent.get("id"), "thread_id": sent.get("threadId")}
 
 

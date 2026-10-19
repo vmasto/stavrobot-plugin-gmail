@@ -7,6 +7,7 @@ import mimetypes
 import re
 import sys
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -23,6 +24,7 @@ OUTPUT_DIR = Path("/tmp/gmail")
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 API_URL = "https://gmail.googleapis.com/gmail/v1/users/me"
+UPLOAD_URL = "https://gmail.googleapis.com/upload/gmail/v1/users/me"
 SCOPE = "https://www.googleapis.com/auth/gmail.modify"
 # Desktop OAuth clients accept a loopback redirect without registering it. Nothing
 # listens there: the user copies the URL from the address bar instead.
@@ -34,6 +36,11 @@ DEADLINE_SECONDS = 25
 TIMEOUT = 15
 # The plugin-runner refuses to move more than 25 MB per run.
 MAX_TRANSFER_BYTES = 25 * 1024 * 1024
+# Gmail refuses messages whose attachments add up to more than this.
+MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
+# create_draft and send take up to this many files, as attachment, attachment_2 and so on.
+# The plugin-runner only passes files that are their own parameter, not lists of files.
+ATTACHMENT_PARAMS = ("attachment",) + tuple(f"attachment_{n}" for n in range(2, 6))
 
 SYSTEM_LABELS = {"INBOX", "UNREAD", "STARRED", "IMPORTANT", "SPAM", "TRASH", "SENT", "DRAFT"}
 
@@ -151,6 +158,33 @@ def api(method: str, path: str, params=None, body=None) -> dict:
         headers={"Authorization": f"Bearer {access_token()}"},
         params=params,
         json=body,
+    )
+    if not response.ok:
+        raise api_error(response)
+    return response.json() if response.content else {}
+
+
+def upload_message(method: str, path: str, metadata: dict, mime: bytes) -> dict:
+    """Send a MIME message through the upload endpoint, which takes messages up to 35 MB."""
+    boundary = f"gmail-plugin-{uuid.uuid4().hex}"
+    body = b"".join(
+        [
+            f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n".encode(),
+            json.dumps(metadata).encode(),
+            f"\r\n--{boundary}\r\nContent-Type: message/rfc822\r\n\r\n".encode(),
+            mime,
+            f"\r\n--{boundary}--\r\n".encode(),
+        ]
+    )
+    response = send(
+        method,
+        f"{UPLOAD_URL}/{path}",
+        headers={
+            "Authorization": f"Bearer {access_token()}",
+            "Content-Type": f"multipart/related; boundary={boundary}",
+        },
+        params={"uploadType": "multipart"},
+        data=body,
     )
     if not response.ok:
         raise api_error(response)
@@ -343,17 +377,40 @@ def full_message(message: dict, all_labels: list, max_chars: int) -> dict:
 # --------------------------------------------------------------------------- outgoing
 
 
-def read_input(value) -> tuple[str, bytes]:
+def read_input(value, name: str = "attachment") -> tuple[str, bytes]:
     """Read a file parameter and return its name and bytes."""
+    if not isinstance(value, str) or not value.strip():
+        raise ToolError(f"{name} must be a file path.")
     path = Path(value)
     if not path.is_file():
-        raise ToolError("attachment was not found.")
+        # The plugin-runner empties OUTPUT_DIR at the start of every run, so a call to this
+        # plugin that runs at the same time can delete the file before this run reads it.
+        raise ToolError(
+            f"{name} was not found at {value}. If another gmail tool ran at the same time, "
+            "run this call again on its own."
+        )
     data = path.read_bytes()
     # The plugin-runner puts input files in OUTPUT_DIR and sends back whatever is
     # left there, so remove the input to keep it from coming back as an output.
     if path.resolve().parent == OUTPUT_DIR.resolve():
         path.unlink()
     return path.name, data
+
+
+def check_attachment_size(total: int) -> None:
+    if total > MAX_ATTACHMENT_BYTES:
+        raise ToolError(f"The attachments add up to {total / 1024 / 1024:.1f} MB, over Gmail's 25 MB limit.")
+
+
+def read_attachments(params: dict) -> list[tuple[str, bytes]]:
+    files = [read_input(params[key], key) for key in ATTACHMENT_PARAMS if params.get(key)]
+    check_attachment_size(sum(len(data) for _, data in files))
+    return files
+
+
+def attach(message: EmailMessage, filename: str, data: bytes) -> None:
+    maintype, subtype = (mimetypes.guess_type(filename)[0] or "application/octet-stream").split("/", 1)
+    message.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
 
 
 def addresses(value, name: str) -> str:
@@ -364,11 +421,14 @@ def addresses(value, name: str) -> str:
     return value.strip()
 
 
-def compose(params: dict) -> dict:
-    """Build the Gmail API message resource shared by create_draft and send."""
+def compose(params: dict) -> tuple[bytes, str | None]:
+    """Build the MIME message shared by create_draft and send, and the thread it belongs to."""
     body = params.get("body")
     if not isinstance(body, str) or not body.strip():
         raise ToolError("body is required.")
+    # Read the files before any network call: the plugin-runner can empty OUTPUT_DIR
+    # when another run of this plugin starts.
+    files = read_attachments(params)
     message = EmailMessage()
     subject, to, thread_id = params.get("subject"), params.get("to"), None
 
@@ -403,18 +463,9 @@ def compose(params: dict) -> dict:
     message["Subject"] = subject or ""
     message.set_content(body)
 
-    attachment = params.get("attachment")
-    if attachment:
-        filename, data = read_input(attachment)
-        if len(data) > MAX_TRANSFER_BYTES:
-            raise ToolError("attachment is over the 25 MB limit.")
-        maintype, subtype = (mimetypes.guess_type(filename)[0] or "application/octet-stream").split("/", 1)
-        message.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
-
-    resource = {"raw": base64.urlsafe_b64encode(message.as_bytes()).decode()}
-    if thread_id:
-        resource["threadId"] = thread_id
-    return resource
+    for filename, data in files:
+        attach(message, filename, data)
+    return message.as_bytes(), thread_id
 
 
 # --------------------------------------------------------------------------- params

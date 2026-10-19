@@ -44,8 +44,9 @@ The plugin asks for the `gmail.modify` scope only. It can't permanently delete m
 - `list_labels`, `create_label`.
 - `modify_labels`: archive, mark read or unread, star, or apply your own labels.
 - `trash`.
-- `create_draft`: a new message or a reply, with an optional attachment.
-- `send`: sends a new message or a saved draft. On by default, see the warning above.
+- `create_draft`: a new message or a reply, with up to five attachments (`attachment`, `attachment_2` to `attachment_5`), 25 MB in total.
+- `add_attachment`: attaches one more file to a saved draft and keeps its recipients, body and thread.
+- `send`: sends a new message or a saved draft. It takes the same attachments as `create_draft`. On by default, see the warning above.
 
 ## License
 

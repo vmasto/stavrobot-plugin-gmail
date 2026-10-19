@@ -12,7 +12,8 @@ import gmail_client as gm  # noqa: E402
 
 
 def main(params: dict) -> dict:
-    draft = gm.api("POST", "drafts", body={"message": gm.compose(params)})
+    mime, thread_id = gm.compose(params)
+    draft = gm.upload_message("POST", "drafts", {"message": {"threadId": thread_id}} if thread_id else {}, mime)
     message = draft.get("message") or {}
     return {"draft_id": draft.get("id"), "message_id": message.get("id"), "thread_id": message.get("threadId")}
 

@@ -33,7 +33,23 @@
     },
     "attachment": {
       "type": "file",
-      "description": "A file to attach."
+      "description": "A file to attach. For more files use attachment_2 to attachment_5. All files together must stay under 25 MB."
+    },
+    "attachment_2": {
+      "type": "file",
+      "description": "Attachment number 2."
+    },
+    "attachment_3": {
+      "type": "file",
+      "description": "Attachment number 3."
+    },
+    "attachment_4": {
+      "type": "file",
+      "description": "Attachment number 4."
+    },
+    "attachment_5": {
+      "type": "file",
+      "description": "Attachment number 5."
     }
   }
 }

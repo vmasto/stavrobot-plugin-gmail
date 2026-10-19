@@ -80,7 +80,11 @@ def fake(tmp_path, monkeypatch):
             if kwargs["data"]["grant_type"] == "refresh_token":
                 return Response(200, {"access_token": "at"})
             return routes[("POST", "token")]
-        key = (method, url.removeprefix(gm.API_URL + "/"))
+        if url.startswith(gm.UPLOAD_URL + "/"):
+            assert kwargs["params"] == {"uploadType": "multipart"}
+            key = (method, "upload/" + url.removeprefix(gm.UPLOAD_URL + "/"))
+        else:
+            key = (method, url.removeprefix(gm.API_URL + "/"))
         handler = routes[key]
         return handler(kwargs) if callable(handler) else handler
 
@@ -96,12 +100,26 @@ def tool(name):
 
 
 def last(fake, method, path):
-    return [call for call in fake.calls if call["method"] == method and call["url"].endswith(path)][-1]
+    # Upload calls match as upload/<path>, e.g. upload/drafts.
+    return [
+        call
+        for call in fake.calls
+        if call["method"] == method and call["url"].replace(gm.UPLOAD_URL, "upload").endswith(path)
+    ][-1]
+
+
+def uploaded(call) -> tuple[dict, email.message.EmailMessage]:
+    """Split a multipart/related upload into its JSON metadata and the MIME message."""
+    boundary = call["headers"]["Content-Type"].split("boundary=")[1]
+    parts = call["data"].split(f"--{boundary}".encode())
+    metadata = json.loads(parts[1].split(b"\r\n\r\n", 1)[1].rstrip(b"\r\n"))
+    raw = parts[2].split(b"\r\n\r\n", 1)[1].removesuffix(b"\r\n")
+    assert parts[3] == b"--\r\n"
+    return metadata, email.message_from_bytes(raw, policy=email.policy.default)
 
 
 def sent_mime(call) -> email.message.EmailMessage:
-    raw = call["json"]["raw"] if "raw" in call["json"] else call["json"]["message"]["raw"]
-    return email.message_from_bytes(base64.urlsafe_b64decode(raw), policy=email.policy.default)
+    return uploaded(call)[1]
 
 
 def test_auth_url_requests_offline_gmail_modify(fake):
@@ -252,7 +270,7 @@ def test_create_draft_reply_threads_and_attaches(fake, tmp_path):
         }
     )
     fake.routes[("GET", "messages/m1")] = Response(200, original)
-    fake.routes[("POST", "drafts")] = Response(200, {"id": "d1", "message": {"id": "m9", "threadId": "t1"}})
+    fake.routes[("POST", "upload/drafts")] = Response(200, {"id": "d1", "message": {"id": "m9", "threadId": "t1"}})
     # The plugin-runner puts input files in OUTPUT_DIR, so the tool must remove them.
     gm.OUTPUT_DIR.mkdir()
     pdf = gm.OUTPUT_DIR / "menu.pdf"
@@ -261,9 +279,8 @@ def test_create_draft_reply_threads_and_attaches(fake, tmp_path):
     assert out == {"draft_id": "d1", "message_id": "m9", "thread_id": "t1"}
     assert not pdf.exists()
 
-    call = last(fake, "POST", "drafts")
-    assert call["json"]["message"]["threadId"] == "t1"
-    mime = sent_mime(call)
+    metadata, mime = uploaded(last(fake, "POST", "upload/drafts"))
+    assert metadata == {"message": {"threadId": "t1"}}
     assert mime["To"] == "anna+reply@example.com" and mime["Subject"] == "Re: Δείπνο"
     assert (
         mime["In-Reply-To"] == "<orig@example.com>" and mime["References"] == "<older@example.com> <orig@example.com>"
@@ -273,10 +290,11 @@ def test_create_draft_reply_threads_and_attaches(fake, tmp_path):
 
 
 def test_send_new_message_and_draft(fake):
-    fake.routes[("POST", "messages/send")] = Response(200, {"id": "m5", "threadId": "t5"})
+    fake.routes[("POST", "upload/messages/send")] = Response(200, {"id": "m5", "threadId": "t5"})
     out = tool("send")({"to": ["a@x.com", "b@x.com"], "subject": "Hi", "body": "Hello", "bcc": "c@x.com"})
     assert out == {"sent": True, "message_id": "m5", "thread_id": "t5"}
-    mime = sent_mime(last(fake, "POST", "messages/send"))
+    metadata, mime = uploaded(last(fake, "POST", "upload/messages/send"))
+    assert metadata == {}
     assert mime["To"] == "a@x.com, b@x.com" and mime["Bcc"] == "c@x.com"
 
     fake.routes[("POST", "drafts/send")] = Response(200, {"id": "m6", "threadId": "t6"})
@@ -285,8 +303,97 @@ def test_send_new_message_and_draft(fake):
 
     with pytest.raises(gm.ToolError, match="not both"):
         tool("send")({"draft_id": "d1", "body": "x"})
+    with pytest.raises(gm.ToolError, match="not both"):
+        tool("send")({"draft_id": "d1", "attachment_3": "/tmp/gmail/x.pdf"})
     with pytest.raises(gm.ToolError, match="to is required"):
         tool("send")({"body": "x"})
+
+
+def files(names: list[str], size: int = 4) -> dict:
+    gm.OUTPUT_DIR.mkdir(exist_ok=True)
+    params = {}
+    for key, name in zip(gm.ATTACHMENT_PARAMS, names):
+        path = gm.OUTPUT_DIR / name
+        path.write_bytes(b"x" * size)
+        params[key] = str(path)
+    return params
+
+
+def test_create_draft_attaches_up_to_five_files_in_order(fake):
+    fake.routes[("POST", "upload/drafts")] = Response(200, {"id": "d1", "message": {"id": "m9", "threadId": "t9"}})
+    names = ["Εξιτήριο & Απόδειξη.pdf", "b.pdf", "c.jpg", "d.png", "e.txt"]
+    tool("create_draft")({"to": "x@y.com", "subject": "Claim", "body": "Hi", **files(names)})
+    mime = sent_mime(last(fake, "POST", "upload/drafts"))
+    assert [part.get_filename() for part in mime.iter_attachments()] == names
+    assert not list(gm.OUTPUT_DIR.iterdir())
+
+
+def test_attachments_share_one_size_limit(fake, monkeypatch):
+    monkeypatch.setattr(gm, "MAX_ATTACHMENT_BYTES", 10)
+    with pytest.raises(gm.ToolError, match="add up to .* over Gmail's 25 MB limit"):
+        tool("create_draft")({"to": "x@y.com", "body": "Hi", **files(["a.pdf", "b.pdf"], size=6)})
+    assert not [call for call in fake.calls if "upload" in call["url"]]
+
+
+def test_missing_attachment_names_the_path_before_any_api_call(fake):
+    missing = str(gm.OUTPUT_DIR / "gone.pdf")
+    with pytest.raises(gm.ToolError) as error:
+        tool("create_draft")({"reply_to_message_id": "m1", "body": "Hi", "attachment_2": missing})
+    assert f"attachment_2 was not found at {missing}" in str(error.value) and "on its own" in str(error.value)
+    assert fake.calls == []
+
+
+def draft_raw(**extra_headers) -> str:
+    original = email.message.EmailMessage()
+    original["To"] = "dr@example.com"
+    original["Bcc"] = "me@example.com"
+    original["Subject"] = "Εξιτήριο & απόδειξη"
+    original["In-Reply-To"] = "<orig@example.com>"
+    original["References"] = "<orig@example.com>"
+    original.set_content("Καλησπέρα,\nσας στέλνω τα έγγραφα.")
+    original.add_attachment(b"%PDF one", maintype="application", subtype="pdf", filename="Εξιτήριο.pdf")
+    return b64(original.as_bytes())
+
+
+def test_add_attachment_keeps_the_draft_and_its_thread(fake):
+    fake.routes[("GET", "drafts/d1")] = Response(
+        200, {"id": "d1", "message": {"id": "m1", "threadId": "t1", "raw": draft_raw()}}
+    )
+    fake.routes[("PUT", "upload/drafts/d1")] = Response(200, {"id": "d1", "message": {"id": "m2", "threadId": "t1"}})
+    out = tool("add_attachment")({"draft_id": "d1", **{"file": files(["Απόδειξη 190€.pdf"])["attachment"]}})
+    assert out == {
+        "draft_id": "d1",
+        "message_id": "m2",
+        "thread_id": "t1",
+        "attachments": ["Εξιτήριο.pdf", "Απόδειξη 190€.pdf"],
+    }
+    assert last(fake, "GET", "drafts/d1")["params"] == {"format": "raw"}
+    metadata, mime = uploaded(last(fake, "PUT", "upload/drafts/d1"))
+    assert metadata == {"id": "d1", "message": {"threadId": "t1"}}
+    assert mime["To"] == "dr@example.com" and mime["Bcc"] == "me@example.com"
+    assert mime["Subject"] == "Εξιτήριο & απόδειξη" and mime["In-Reply-To"] == "<orig@example.com>"
+    assert mime.get_body(("plain",)).get_content().startswith("Καλησπέρα,")
+    attachments = list(mime.iter_attachments())
+    assert [part.get_content() for part in attachments] == [b"%PDF one", b"xxxx"]
+
+
+def test_add_attachment_to_a_plain_draft_and_checks_the_total(fake, monkeypatch):
+    plain = email.message.EmailMessage()
+    plain["To"] = "a@b.com"
+    plain.set_content("Hi")
+    fake.routes[("GET", "drafts/d2")] = Response(
+        200, {"id": "d2", "message": {"id": "m1", "raw": b64(plain.as_bytes())}}
+    )
+    fake.routes[("PUT", "upload/drafts/d2")] = Response(200, {"id": "d2", "message": {"id": "m3"}})
+    out = tool("add_attachment")({"draft_id": "d2", "file": files(["a.pdf"])["attachment"]})
+    assert out["attachments"] == ["a.pdf"]
+    metadata, mime = uploaded(last(fake, "PUT", "upload/drafts/d2"))
+    assert metadata == {"id": "d2", "message": {}} and mime.get_content_type() == "multipart/mixed"
+
+    fake.routes[("GET", "drafts/d1")] = Response(200, {"id": "d1", "message": {"id": "m1", "raw": draft_raw()}})
+    monkeypatch.setattr(gm, "MAX_ATTACHMENT_BYTES", 10)
+    with pytest.raises(gm.ToolError, match="25 MB"):
+        tool("add_attachment")({"draft_id": "d1", "file": files(["b.pdf"])["attachment"]})
 
 
 def test_api_errors_explain_the_fix(fake):
